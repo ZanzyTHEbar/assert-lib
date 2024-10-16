@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ZanzyTHEbar/assert-lib/assert"
+	"github.com/ZanzyTHEbar/assert-lib"
 )
 
 func main() {
