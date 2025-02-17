@@ -3,6 +3,12 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [1.2.0](https://github.com/ZanzyTHEbar/assert-lib/compare/v1.1.0...v1.2.0) (2025-02-17)
+
+### 📝 Documentation
+
+* Update README.md ([d9cce09](https://github.com/ZanzyTHEbar/assert-lib/commit/d9cce09e8c3a1d2cff5576cb48b2fcde63dd1f9f))
+
 ## [1.1.0](https://github.com/ZanzyTHEbar/assert-lib/compare/v1.0.0...v1.1.0) (2025-02-17)
 
 ### 📝 Documentation
