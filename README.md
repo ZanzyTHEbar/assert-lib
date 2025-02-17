@@ -34,7 +34,7 @@ Check out the [examples](/examples/) directory for usage examples.
 - **Context-Based Logging**: Attach structured logging to your assertion calls.
 - **Custom Loggers**: Use your own logger with the AssertHandler interface.
 
-Works very well with my (errbuilder-go)[https://github.com/ZanzyTHEbar/errbuilder-go] library.
+Works very well with my [errbuilder-go](https://github.com/ZanzyTHEbar/errbuilder-go) library.
 
 ## Examples
 
