@@ -123,19 +123,45 @@ jobs:
                   # Run tests one final time (exclude examples to avoid main function conflicts)
                   go test -v $(go list ./... | grep -v examples)
 
-                  # Publish to Go proxy by requesting the module
+                  # Step 1: Publish to Go proxy by requesting the module
+                  echo "Adding module to Go proxy..."
                   GOPROXY=proxy.golang.org go list -m github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}
+
+                  # Step 2: Trigger pkg.go.dev indexing via proxy API
+                  echo "Triggering pkg.go.dev indexing via proxy API..."
+                  curl -f "https://proxy.golang.org/github.com/zanzythebar/assert-lib/@v/${{ steps.get_version.outputs.new_version }}.info" || echo "Proxy API call failed, continuing..."
+
+                  # Step 3: Simulate real module usage to ensure indexing
+                  echo "Simulating module download to trigger indexing..."
+                  go clean -modcache
+                  GOPROXY=proxy.golang.org go mod download github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}
 
                   echo "Successfully published github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }} to Go proxy"
                   echo "Module should now be available at: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}"
 
-            - name: Wait for pkg.go.dev indexing
+            - name: Trigger pkg.go.dev indexing
               if: steps.get_version.outputs.new_version != ''
               run: |
-                  echo "Waiting for pkg.go.dev to index the new version..."
-                  sleep 30
+                  echo "Triggering pkg.go.dev indexing for version ${{ steps.get_version.outputs.new_version }}..."
 
-                  # Optional: Try to fetch the package page to trigger indexing
-                  curl -f "https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}" > /dev/null 2>&1 || echo "Package may still be indexing..."
+                  # Method 1: Direct request to pkg.go.dev to trigger indexing
+                  echo "Requesting pkg.go.dev to index the new version..."
+                  curl -f "https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}" > /dev/null 2>&1 || echo "Initial pkg.go.dev request completed (may still be indexing)"
 
-                  echo "Package should be available at: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib"
+                  # Method 2: Request the module info page which often triggers indexing
+                  curl -f "https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib?tab=versions" > /dev/null 2>&1 || echo "Versions page request completed"
+
+                  # Wait for indexing to process
+                  echo "Waiting for pkg.go.dev indexing to complete..."
+                  sleep 60
+
+                  # Verify the new version is available (non-fatal)
+                  echo "Verifying pkg.go.dev availability..."
+                  if curl -f --max-time 30 "https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}" > /dev/null 2>&1; then
+                    echo "✅ Package ${{ steps.get_version.outputs.new_version }} is now available on pkg.go.dev!"
+                  else
+                    echo "⏳ Package may still be indexing. It should appear on pkg.go.dev within a few minutes."
+                  fi
+
+                  echo "🔗 Package page: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib"
+                  echo "🔗 Version page: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_version.outputs.new_version }}"
