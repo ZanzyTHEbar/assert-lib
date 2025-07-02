@@ -17,10 +17,12 @@ type Option func(*AssertConfig)
 
 // AssertConfig holds temporary configuration for assert operations
 type AssertConfig struct {
-	formatter Formatter
-	writer    io.Writer
-	exitFunc  func(code int)
-	deferMode bool
+	formatter   Formatter
+	writer      io.Writer
+	exitFunc    func(code int)
+	deferMode   bool
+	debugMode   bool
+	verboseMode bool
 }
 
 // Option functions for configuring assert behavior
@@ -45,6 +47,25 @@ func WithExitFunc(f func(int)) Option {
 func WithDeferMode(deferMode bool) Option {
 	return func(c *AssertConfig) {
 		c.deferMode = deferMode
+	}
+}
+
+func WithDebugMode() Option {
+	return func(c *AssertConfig) {
+		c.debugMode = true
+	}
+}
+
+func WithVerboseMode() Option {
+	return func(c *AssertConfig) {
+		c.verboseMode = true
+	}
+}
+
+func WithQuietMode() Option {
+	return func(c *AssertConfig) {
+		c.debugMode = false
+		c.verboseMode = false
 	}
 }
 
@@ -81,6 +102,7 @@ func WithTestingDefaults() Option {
 		// Set up defaults good for testing
 		c.exitFunc = func(code int) {} // No exit
 		c.formatter = &TextFormatter{}
+		c.debugMode = true // Include stack traces for debugging tests
 	}
 }
 
@@ -89,6 +111,8 @@ func WithProductionDefaults() Option {
 		// Set up defaults good for production
 		c.exitFunc = func(code int) {} // No exit, just log
 		c.formatter = &JSONFormatter{} // Structured logging
+		c.debugMode = false            // No stack traces in production
+		c.verboseMode = false          // Concise output
 	}
 }
 
@@ -123,10 +147,12 @@ func applyOptions(opts ...Option) *AssertHandler {
 
 	// Create temporary config
 	config := &AssertConfig{
-		formatter: handler.formatter,
-		writer:    handler.writer,
-		exitFunc:  handler.exitFunc,
-		deferMode: handler.deferAssertions,
+		formatter:   handler.formatter,
+		writer:      handler.writer,
+		exitFunc:    handler.exitFunc,
+		deferMode:   handler.deferAssertions,
+		debugMode:   handler.debugMode,
+		verboseMode: handler.verboseMode,
 	}
 
 	// Apply options
@@ -143,6 +169,8 @@ func applyOptions(opts ...Option) *AssertHandler {
 		formatter:       config.formatter,
 		deferredErrors:  []string{},
 		deferAssertions: config.deferMode,
+		debugMode:       config.debugMode,
+		verboseMode:     config.verboseMode,
 	}
 
 	return tempHandler
@@ -158,6 +186,8 @@ type AssertHandler struct {
 	formatter       Formatter
 	deferredErrors  []string
 	deferAssertions bool
+	debugMode       bool
+	verboseMode     bool
 }
 
 // Define interfaces for logging/asserting
@@ -179,6 +209,8 @@ func NewAssertHandler() *AssertHandler {
 		formatter:       &TextFormatter{}, // Default to text formatter
 		deferredErrors:  []string{},
 		deferAssertions: false,
+		debugMode:       false, // Default: no stack traces
+		verboseMode:     false, // Default: concise output
 	}
 }
 
@@ -211,6 +243,14 @@ func (a *AssertHandler) ToWriter(w io.Writer) {
 	a.writer = w
 }
 
+func (a *AssertHandler) SetDebugMode(debugMode bool) {
+	a.debugMode = debugMode
+}
+
+func (a *AssertHandler) SetVerboseMode(verboseMode bool) {
+	a.verboseMode = verboseMode
+}
+
 func (a *AssertHandler) runAssert(ctx context.Context, msg string, args ...interface{}) {
 	a.flushLock.Lock()
 	defer a.flushLock.Unlock()
@@ -239,13 +279,20 @@ func (a *AssertHandler) runAssert(ctx context.Context, msg string, args ...inter
 		data[args[i].(string)] = args[i+1]
 	}
 
-	fmt.Fprintf(a.writer, "ARGS: %+v\n", args)
+	// Only print ARGS in verbose mode
+	if a.verboseMode {
+		fmt.Fprintf(a.writer, "ARGS: %+v\n", args)
+	}
 
 	for k, v := range a.assertData {
 		data[k] = v.Dump()
 	}
 
-	stack := string(debug.Stack())
+	var stack string
+	// Only capture stack trace in debug or verbose mode
+	if a.debugMode || a.verboseMode {
+		stack = string(debug.Stack())
+	}
 
 	formattedOutput := a.formatter.Format(data, stack)
 

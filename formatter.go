@@ -20,7 +20,9 @@ func (f *TextFormatter) Format(assertData map[string]interface{}, stack string) 
 	for key, value := range assertData {
 		output += fmt.Sprintf("   %s=%v\n", key, value)
 	}
-	output += fmt.Sprintf("%s\n", stack)
+	if stack != "" {
+		output += fmt.Sprintf("%s\n", stack)
+	}
 	return output
 }
 
@@ -30,7 +32,9 @@ type JSONFormatter struct{}
 func (f *JSONFormatter) Format(assertData map[string]interface{}, stack string) string {
 	data := map[string]interface{}{
 		"assertData": assertData,
-		"stack":      stack,
+	}
+	if stack != "" {
+		data["stack"] = stack
 	}
 	out, _ := json.MarshalIndent(data, "", "  ")
 	return string(out)
@@ -42,7 +46,9 @@ type YAMLFormatter struct{}
 func (f *YAMLFormatter) Format(assertData map[string]interface{}, stack string) string {
 	data := map[string]interface{}{
 		"assertData": assertData,
-		"stack":      stack,
+	}
+	if stack != "" {
+		data["stack"] = stack
 	}
 	out, _ := yaml.Marshal(data)
 	return string(out)

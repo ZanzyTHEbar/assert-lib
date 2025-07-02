@@ -1,59 +1,118 @@
 name: CI
 
 on:
-  push:
-    branches: [master, main]
-  pull_request:
+    push:
+        branches: [master, main]
+    pull_request:
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
+    build:
+        name: Build
+        runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: js
-            goarch: wasm
-          - goos: aix
-            goarch: ppc64
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - goos: js
+                      goarch: wasm
+                    - goos: aix
+                      goarch: ppc64
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-        with:
-          fetch-depth: 0
+        steps:
+            - name: Checkout
+              uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+              with:
+                  fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
-        with:
-          go-version: "1.23"
+            - name: Set up Go
+              uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+              with:
+                  go-version: "1.23"
 
-      - name: Build
-        run: go build .
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+            - name: Build
+              run: go build .
+              env:
+                  GOOS: ${{ matrix.goos }}
+                  GOARCH: ${{ matrix.goarch }}
 
-  release:
-    name: Release
-    runs-on: ubuntu-latest
+    release:
+        name: Release
+        runs-on: ubuntu-latest
 
-    needs: build
+        needs: build
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-        with:
-          fetch-depth: 0
-      - name: Setup node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - name: Install dependencies
-        run: npm install -g semantic-release conventional-changelog-conventionalcommits @semantic-release/exec @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/release-notes-generator
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: semantic-release
+        steps:
+            - name: Checkout
+              uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+              with:
+                  fetch-depth: 0
+            - name: Setup node
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 20
+            - name: Install dependencies
+              run: npm install -g semantic-release conventional-changelog-conventionalcommits @semantic-release/exec @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/release-notes-generator
+            - name: Release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: semantic-release
+
+    publish-go-docs:
+        name: Publish to Go Package Docs
+        runs-on: ubuntu-latest
+
+        needs: release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Go
+              uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+              with:
+                  go-version: "1.23"
+
+            - name: Get latest tag
+              id: get_tag
+              run: |
+                  # Get the latest git tag
+                  LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+                  if [ -n "$LATEST_TAG" ]; then
+                    echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+                    echo "Found latest tag: $LATEST_TAG"
+                  else
+                    echo "No tags found, skipping publication"
+                    echo "latest_tag=" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Publish to Go proxy
+              if: steps.get_tag.outputs.latest_tag != ''
+              run: |
+                  echo "Publishing version ${{ steps.get_tag.outputs.latest_tag }} to Go proxy..."
+
+                  # Run go mod tidy to ensure dependencies are clean
+                  go mod tidy
+
+                  # Run tests one final time (exclude examples to avoid main function conflicts)
+                  go test -v $(go list ./... | grep -v examples)
+
+                  # Publish to Go proxy by requesting the module
+                  GOPROXY=proxy.golang.org go list -m github.com/ZanzyTHEbar/assert-lib@${{ steps.get_tag.outputs.latest_tag }}
+
+                  echo "Successfully published github.com/ZanzyTHEbar/assert-lib@${{ steps.get_tag.outputs.latest_tag }} to Go proxy"
+                  echo "Module should now be available at: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_tag.outputs.latest_tag }}"
+
+            - name: Wait for pkg.go.dev indexing
+              if: steps.get_tag.outputs.latest_tag != ''
+              run: |
+                  echo "Waiting for pkg.go.dev to index the new version..."
+                  sleep 30
+
+                  # Optional: Try to fetch the package page to trigger indexing
+                  curl -f "https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib@${{ steps.get_tag.outputs.latest_tag }}" > /dev/null 2>&1 || echo "Package may still be indexing..."
+
+                  echo "Package should be available at: https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib"

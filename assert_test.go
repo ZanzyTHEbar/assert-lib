@@ -310,3 +310,65 @@ func TestTrueFalse(t *testing.T) {
 		t.Fatalf("False should have passed but got output: %s", buffer.String())
 	}
 }
+
+func TestDebugModes(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test default mode (no stack trace)
+	Assert(context.TODO(), false, "Default mode",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	output := buffer.String()
+	if bytes.Contains(buffer.Bytes(), []byte("goroutine")) {
+		t.Fatalf("Default mode should not include stack trace, but got: %s", output)
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test debug mode (with stack trace)
+	Assert(context.TODO(), false, "Debug mode",
+		WithDebugMode(),
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	output = buffer.String()
+	if !bytes.Contains(buffer.Bytes(), []byte("goroutine")) {
+		t.Fatalf("Debug mode should include stack trace, but got: %s", output)
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test verbose mode (with stack trace and args)
+	Assert(context.TODO(), false, "Verbose mode",
+		WithVerboseMode(),
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	output = buffer.String()
+	if !bytes.Contains(buffer.Bytes(), []byte("goroutine")) {
+		t.Fatalf("Verbose mode should include stack trace, but got: %s", output)
+	}
+	if !bytes.Contains(buffer.Bytes(), []byte("ARGS:")) {
+		t.Fatalf("Verbose mode should include ARGS, but got: %s", output)
+	}
+}
+
+func TestProductionDefaults(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test production defaults (should be clean JSON without stack)
+	Assert(context.TODO(), false, "Production test",
+		WithProductionDefaults(),
+		WithWriter(&buffer))
+
+	output := buffer.String()
+	if bytes.Contains(buffer.Bytes(), []byte("goroutine")) {
+		t.Fatalf("Production defaults should not include stack trace, but got: %s", output)
+	}
+	if !bytes.Contains(buffer.Bytes(), []byte(`"msg": "Production test"`)) {
+		t.Fatalf("Production defaults should use JSON format, but got: %s", output)
+	}
+}

@@ -2,11 +2,20 @@
 
 A lightweight assertion library for Go, designed for systems and real-time programming with structured logging and flush controls. Features **safe-by-default** behavior with optional instance creation using the Function Options pattern.
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/ZanzyTHEbar/assert-lib.svg)](https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ZanzyTHEbar/assert-lib)](https://goreportcard.com/report/github.com/ZanzyTHEbar/assert-lib)
+
 ## Installation
 
 ```bash
 go get github.com/ZanzyTHEbar/assert-lib
 ```
+
+## Documentation
+
+-   **API Documentation**: [pkg.go.dev/github.com/ZanzyTHEbar/assert-lib](https://pkg.go.dev/github.com/ZanzyTHEbar/assert-lib)
+-   **Examples**: See the [examples/](./examples/) directory
+-   **Source Code**: [github.com/ZanzyTHEbar/assert-lib](https://github.com/ZanzyTHEbar/assert-lib)
 
 ## Quick Start - No Instance Required!
 
@@ -45,9 +54,21 @@ assert.Assert(ctx, false, "This will exit",
 assert.Assert(ctx, condition, "Silent check",
     assert.WithSilentMode())
 
-// Testing defaults (safe + text format)
+// Debug mode with stack traces (great for development)
+assert.Assert(ctx, false, "Debug assertion with stack trace",
+    assert.WithDebugMode())
+
+// Verbose mode with stack traces and argument details
+assert.Assert(ctx, false, "Verbose assertion with full details",
+    assert.WithVerboseMode())
+
+// Testing defaults (safe + text format + debug info)
 assert.Assert(ctx, false, "Test assertion",
     assert.WithTestingDefaults())
+
+// Production defaults (safe + JSON format + clean output)
+assert.Assert(ctx, false, "Production assertion",
+    assert.WithProductionDefaults())
 
 // Production defaults (safe + JSON format)
 assert.Assert(ctx, false, "Production assertion",
@@ -113,6 +134,12 @@ handler.Assert(context.TODO(), false, "Traditional usage")
 -   `WithWriter(writer)` - Custom output writer
 -   `WithSilentMode()` - No output
 
+### Debug & Verbosity Control
+
+-   `WithDebugMode()` - Include stack traces in output (great for development)
+-   `WithVerboseMode()` - Include stack traces + argument details
+-   `WithQuietMode()` - Minimal output (default behavior)
+
 ### Behavior Control
 
 -   `WithCrashOnFailure()` - Exit program on assertion failure
@@ -121,8 +148,8 @@ handler.Assert(context.TODO(), false, "Traditional usage")
 
 ### Convenience Presets
 
--   `WithTestingDefaults()` - Safe behavior + text format
--   `WithProductionDefaults()` - Safe behavior + JSON format
+-   `WithTestingDefaults()` - Safe behavior + text format + debug info
+-   `WithProductionDefaults()` - Safe behavior + JSON format + clean output
 
 ## Examples
 
@@ -130,10 +157,53 @@ Run the examples to see different usage patterns:
 
 ```bash
 go run examples/ergonomic_api.go      # Optimized ergonomic usage
+go run examples/debug_modes.go       # Debug/verbose mode examples
 go run examples/basic_assertion.go    # Traditional instance-based usage
 go run examples/deferred_assertions.go # Batch processing
 go run examples/custom_exit.go        # Custom exit behavior
 go run examples/formater.go          # Different output formats
+```
+
+## Output Modes Comparison
+
+### Default Mode (Clean)
+
+```
+ASSERT
+   msg=Test assertion
+   area=Assert
+```
+
+### Debug Mode (With Stack Trace)
+
+```
+ASSERT
+   msg=Test assertion
+   area=Assert
+goroutine 1 [running]:
+runtime/debug.Stack()...
+```
+
+### Verbose Mode (With Stack + Args)
+
+```
+ARGS: [key1 value1 key2 value2]
+ASSERT
+   msg=Test assertion
+   area=Assert
+goroutine 1 [running]:
+runtime/debug.Stack()...
+```
+
+### Production Mode (Clean JSON)
+
+```json
+{
+    "assertData": {
+        "area": "Assert",
+        "msg": "Test assertion"
+    }
+}
 ```
 
 ## Philosophy
@@ -141,6 +211,8 @@ go run examples/formater.go          # Different output formats
 This library follows a **safe-by-default** philosophy:
 
 -   Package-level functions won't crash your program by default
+-   **Stack traces are disabled by default** for clean production logs
+-   You opt-in to debug information and crashing behavior when needed
 -   You opt-in to crashing behavior when needed
 -   Rich context and structured logging help with debugging
 -   Function Options pattern provides flexibility without complexity
