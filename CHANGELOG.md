@@ -3,6 +3,12 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [1.3.1](https://github.com/ZanzyTHEbar/assert-lib/compare/v1.3.0...v1.3.1) (2025-07-02)
+
+### 🧑‍💻 Code Refactoring
+
+* Add debug and verbosity modes to assertion library with updated documentation and examples ([d4d4d9e](https://github.com/ZanzyTHEbar/assert-lib/commit/d4d4d9e855bac6b50887ebabf21eaeb567dbf64f))
+
 ## [1.3.0](https://github.com/ZanzyTHEbar/assert-lib/compare/v1.2.0...v1.3.0) (2025-07-02)
 
 ### 🍕 Features
