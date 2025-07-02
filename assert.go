@@ -12,6 +12,142 @@ import (
 	"time"
 )
 
+// Option defines a function that can modify assert configuration
+type Option func(*AssertConfig)
+
+// AssertConfig holds temporary configuration for assert operations
+type AssertConfig struct {
+	formatter Formatter
+	writer    io.Writer
+	exitFunc  func(code int)
+	deferMode bool
+}
+
+// Option functions for configuring assert behavior
+func WithFormatter(f Formatter) Option {
+	return func(c *AssertConfig) {
+		c.formatter = f
+	}
+}
+
+func WithWriter(w io.Writer) Option {
+	return func(c *AssertConfig) {
+		c.writer = w
+	}
+}
+
+func WithExitFunc(f func(int)) Option {
+	return func(c *AssertConfig) {
+		c.exitFunc = f
+	}
+}
+
+func WithDeferMode(deferMode bool) Option {
+	return func(c *AssertConfig) {
+		c.deferMode = deferMode
+	}
+}
+
+// Additional convenience options for common use cases
+func WithCrashOnFailure() Option {
+	return func(c *AssertConfig) {
+		c.exitFunc = os.Exit
+	}
+}
+
+func WithPanicOnFailure() Option {
+	return func(c *AssertConfig) {
+		c.exitFunc = func(code int) {
+			panic(fmt.Sprintf("assertion failed with exit code %d", code))
+		}
+	}
+}
+
+func WithSilentMode() Option {
+	return func(c *AssertConfig) {
+		c.writer = io.Discard
+	}
+}
+
+func WithLogLevel(level string) Option {
+	return func(c *AssertConfig) {
+		// TODO: will be extended to work with different log levels
+	}
+}
+
+// Combine multiple options into one
+func WithTestingDefaults() Option {
+	return func(c *AssertConfig) {
+		// Set up defaults good for testing
+		c.exitFunc = func(code int) {} // No exit
+		c.formatter = &TextFormatter{}
+	}
+}
+
+func WithProductionDefaults() Option {
+	return func(c *AssertConfig) {
+		// Set up defaults good for production
+		c.exitFunc = func(code int) {} // No exit, just log
+		c.formatter = &JSONFormatter{} // Structured logging
+	}
+}
+
+// Global default handler for package-level functions
+var (
+	defaultHandler *AssertHandler
+	initOnce       sync.Once
+)
+
+// getDefaultHandler returns the global default handler, initializing it if needed
+func getDefaultHandler() *AssertHandler {
+	initOnce.Do(func() {
+		defaultHandler = NewAssertHandler()
+		// Set safe defaults that don't crash the program
+		defaultHandler.SetExitFunc(func(code int) {
+			// No-op: just return instead of exiting
+			// Users can opt into crashing behavior if needed
+		})
+		// Use stderr for default output but don't exit
+		defaultHandler.ToWriter(os.Stderr)
+	})
+	return defaultHandler
+}
+
+// applyOptions creates a temporary handler with options applied
+func applyOptions(opts ...Option) *AssertHandler {
+	handler := getDefaultHandler()
+
+	if len(opts) == 0 {
+		return handler
+	}
+
+	// Create temporary config
+	config := &AssertConfig{
+		formatter: handler.formatter,
+		writer:    handler.writer,
+		exitFunc:  handler.exitFunc,
+		deferMode: handler.deferAssertions,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	// Create temporary handler with modified config
+	tempHandler := &AssertHandler{
+		flushes:         handler.flushes,
+		assertData:      handler.assertData,
+		writer:          config.writer,
+		exitFunc:        config.exitFunc,
+		formatter:       config.formatter,
+		deferredErrors:  []string{},
+		deferAssertions: config.deferMode,
+	}
+
+	return tempHandler
+}
+
 // Define the AssertHandler to encapsulate state
 type AssertHandler struct {
 	flushes         []AssertFlush
@@ -157,14 +293,10 @@ func (a *AssertHandler) AssertWithTimeout(ctx context.Context, timeout time.Dura
 }
 
 func (a *AssertHandler) Nil(ctx context.Context, item any, msg string, data ...any) {
-	slog.InfoContext(ctx, "Nil Check", "item", item)
-	if item == nil {
+	if item != nil {
+		slog.ErrorContext(ctx, "Nil#not nil encountered")
 		a.runAssert(ctx, msg, data...)
-		return
 	}
-
-	slog.ErrorContext(ctx, "Nil#not nil encountered")
-	a.runAssert(ctx, msg, data...)
 }
 
 func (a *AssertHandler) NotNil(ctx context.Context, item any, msg string, data ...any) {
@@ -183,4 +315,112 @@ func (a *AssertHandler) NoError(ctx context.Context, err error, msg string, data
 		data = append(data, "error", err)
 		a.runAssert(ctx, msg, data...)
 	}
+}
+
+// Package-level functions for ergonomic usage
+
+// Assert checks if the condition is true, failing if false
+func Assert(ctx context.Context, truth bool, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, truth, msg)
+}
+
+// AssertWithTimeout checks if the condition is true with a timeout, failing if false
+func AssertWithTimeout(ctx context.Context, timeout time.Duration, truth bool, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.AssertWithTimeout(ctx, timeout, truth, msg)
+}
+
+// Nil checks if the item is nil, failing if not nil
+func Nil(ctx context.Context, item any, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.Nil(ctx, item, msg)
+}
+
+// NotNil checks if the item is not nil, failing if nil
+func NotNil(ctx context.Context, item any, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.NotNil(ctx, item, msg)
+}
+
+// Never always fails - use for code paths that should never be reached
+func Never(ctx context.Context, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.Never(ctx, msg)
+}
+
+// NoError checks if the error is nil, failing if not nil
+func NoError(ctx context.Context, err error, msg string, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.NoError(ctx, err, msg)
+}
+
+// NotEmpty checks if a string is not empty, failing if empty
+func NotEmpty(ctx context.Context, str string, msg string, opts ...Option) {
+	if str == "" {
+		// String is empty, assertion should fail
+		handler := applyOptions(opts...)
+		handler.Assert(ctx, false, msg, "value", str)
+	}
+	// String is not empty, assertion passes (no action needed)
+}
+
+// Equal checks if two values are equal, failing if they're not
+func Equal(ctx context.Context, expected, actual any, msg string, opts ...Option) {
+	if expected == actual {
+		return // Values are equal, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "expected", expected, "actual", actual)
+}
+
+// NotEqual checks if two values are not equal, failing if they are equal
+func NotEqual(ctx context.Context, expected, actual any, msg string, opts ...Option) {
+	if expected != actual {
+		return // Values are not equal, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "expected_not", expected, "actual", actual)
+}
+
+// Contains checks if a string contains a substring, failing if it doesn't
+func Contains(ctx context.Context, str, substr string, msg string, opts ...Option) {
+	if strings.Contains(str, substr) {
+		return // String contains substring, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "string", str, "substring", substr)
+}
+
+// NotContains checks if a string does not contain a substring, failing if it does
+func NotContains(ctx context.Context, str, substr string, msg string, opts ...Option) {
+	if !strings.Contains(str, substr) {
+		return // String does not contain substring, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "string", str, "substring", substr)
+}
+
+// True checks if a value is true, failing if false
+func True(ctx context.Context, value bool, msg string, opts ...Option) {
+	if value {
+		return // Value is true, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "value", value)
+}
+
+// False checks if a value is false, failing if true
+func False(ctx context.Context, value bool, msg string, opts ...Option) {
+	if !value {
+		return // Value is false, assertion passes
+	}
+	handler := applyOptions(opts...)
+	handler.Assert(ctx, false, msg, "value", value)
+}
+
+// ProcessDeferredAssertions processes any deferred assertions on the default handler
+func ProcessDeferredAssertions(ctx context.Context, opts ...Option) {
+	handler := applyOptions(opts...)
+	handler.ProcessDeferredAssertions(ctx)
 }

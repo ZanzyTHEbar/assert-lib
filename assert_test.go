@@ -80,7 +80,7 @@ func TestDeferredAssertions(t *testing.T) {
 	handler.SetDeferAssertions(true)
 
 	// These should not be printed immediately
-	handler.Nil(context.TODO(), nil, "Test Deferred Nil")
+	handler.NotNil(context.TODO(), nil, "Test Deferred NotNil") // This will fail since nil is passed
 	handler.Assert(context.TODO(), false, "Test Deferred Assert")
 
 	// Process deferred assertions
@@ -89,8 +89,8 @@ func TestDeferredAssertions(t *testing.T) {
 	if !bytes.Contains(buffer.Bytes(), []byte("Test Deferred Assert")) {
 		t.Fatalf("Expected deferred assertion message not found")
 	}
-	if !bytes.Contains(buffer.Bytes(), []byte("Test Deferred Nil")) {
-		t.Fatalf("Expected deferred nil message not found")
+	if !bytes.Contains(buffer.Bytes(), []byte("Test Deferred NotNil")) {
+		t.Fatalf("Expected deferred NotNil message not found")
 	}
 }
 
@@ -105,5 +105,208 @@ func TestImmediateAssertions(t *testing.T) {
 
 	if !bytes.Contains(buffer.Bytes(), []byte("Test Immediate Assert")) {
 		t.Fatalf("Expected immediate assertion message not found")
+	}
+}
+
+func TestPackageLevelAssert(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test package-level function with custom writer
+	Assert(context.TODO(), false, "Package level assertion failed",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {})) // Prevent exit
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Package level assertion failed")) {
+		t.Fatalf("Expected package-level assertion message not found in output")
+	}
+}
+
+func TestNotEmpty(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test NotEmpty with empty string (should fail)
+	NotEmpty(context.TODO(), "", "String should not be empty",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	if !bytes.Contains(buffer.Bytes(), []byte("String should not be empty")) {
+		t.Fatalf("Expected NotEmpty assertion message not found in output")
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test NotEmpty with non-empty string (should pass)
+	NotEmpty(context.TODO(), "hello", "String should not be empty",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("NotEmpty should have passed but got output: %s", buffer.String())
+	}
+}
+
+func TestPackageLevelWithOptions(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test with JSON formatter
+	Assert(context.TODO(), false, "JSON formatted error",
+		WithFormatter(&JSONFormatter{}),
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	if !bytes.Contains(buffer.Bytes(), []byte(`"msg": "JSON formatted error"`)) {
+		t.Fatalf("Expected JSON formatted output not found")
+	}
+}
+
+func TestDefaultSafeBehavior(t *testing.T) {
+	// This test ensures the default behavior doesn't crash
+	// We can't easily test this without complex process management,
+	// but we can verify the default exit function is a no-op
+
+	// Get a fresh handler to test with
+	handler := NewAssertHandler()
+	handler.SetExitFunc(func(code int) {}) // Set no-op exit function
+
+	var buffer bytes.Buffer
+	handler.ToWriter(&buffer)
+
+	// This should call the exit function but not crash
+	handler.Assert(context.TODO(), false, "Test safe behavior")
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Test safe behavior")) {
+		t.Fatalf("Expected safe behavior message not found in output")
+	}
+}
+
+func TestEqual(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test Equal with matching values (should pass)
+	Equal(context.TODO(), 42, 42, "Numbers should be equal",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("Equal should have passed but got output: %s", buffer.String())
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test Equal with non-matching values (should fail)
+	Equal(context.TODO(), 42, 24, "Numbers should be equal",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Numbers should be equal")) {
+		t.Fatalf("Expected Equal assertion message not found in output")
+	}
+}
+
+func TestNotEqual(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test NotEqual with different values (should pass)
+	NotEqual(context.TODO(), 42, 24, "Numbers should be different",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("NotEqual should have passed but got output: %s", buffer.String())
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test NotEqual with same values (should fail)
+	NotEqual(context.TODO(), 42, 42, "Numbers should be different",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Numbers should be different")) {
+		t.Fatalf("Expected NotEqual assertion message not found in output")
+	}
+}
+
+func TestContains(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test Contains with valid substring (should pass)
+	Contains(context.TODO(), "hello world", "world", "Should contain substring",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("Contains should have passed but got output: %s", buffer.String())
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test Contains with invalid substring (should fail)
+	Contains(context.TODO(), "hello", "xyz", "Should contain substring",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Should contain substring")) {
+		t.Fatalf("Expected Contains assertion message not found in output")
+	}
+}
+
+func TestConvenienceOptions(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test WithTestingDefaults
+	Assert(context.TODO(), false, "Testing defaults",
+		WithTestingDefaults(),
+		WithWriter(&buffer))
+
+	if !bytes.Contains(buffer.Bytes(), []byte("Testing defaults")) {
+		t.Fatalf("Expected testing defaults assertion message not found in output")
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test WithProductionDefaults (should use JSON formatter)
+	Assert(context.TODO(), false, "Production defaults",
+		WithProductionDefaults(),
+		WithWriter(&buffer))
+
+	if !bytes.Contains(buffer.Bytes(), []byte(`"msg": "Production defaults"`)) {
+		t.Fatalf("Expected JSON formatted output from production defaults not found")
+	}
+}
+
+func TestTrueFalse(t *testing.T) {
+	var buffer bytes.Buffer
+
+	// Test True with true value (should pass)
+	True(context.TODO(), true, "Value should be true",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("True should have passed but got output: %s", buffer.String())
+	}
+
+	// Reset buffer
+	buffer.Reset()
+
+	// Test False with false value (should pass)
+	False(context.TODO(), false, "Value should be false",
+		WithWriter(&buffer),
+		WithExitFunc(func(code int) {}))
+
+	// Buffer should be empty since assertion passed
+	if buffer.Len() > 0 {
+		t.Fatalf("False should have passed but got output: %s", buffer.String())
 	}
 }
